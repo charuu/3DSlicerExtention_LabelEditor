@@ -11,9 +11,9 @@
 * For using the plugin offline it can be placed under the ../bin/Python folder under Slicer
 * It requires installation of tensorflow, tensorflow-ops and scikit-image in 3D slicer environment 
 * Commands for installing libraries in python-interactor - 
-* pip_install('tensorflow')
-* pip_install('tensorflow-ops')
-* pip_install('scikit-image')
+  * pip_install('tensorflow')
+  * pip_install('tensorflow-ops')
+  * pip_install('scikit-image')
 
 ### Contribution guidelines ###
 
