@@ -1,1 +1,1 @@
-# 3DSlicerextention_LabelEditor
+# 3DSlicerExtention_LabelEditor
