@@ -8,7 +8,7 @@
 
 ### How do I get set up? ###
 
-* For using the plugin offline it can be placed under the ../bin/Python folder under Slicer
+* For using the plugin offline it can be placed under the ../bin/Python folder under Slicer's home installation
 * It requires installation of tensorflow, tensorflow-ops and scikit-image in 3D slicer environment 
 * Commands for installing libraries in python-interactor - 
   * pip_install('tensorflow')
