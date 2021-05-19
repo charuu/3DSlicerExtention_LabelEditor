@@ -98,6 +98,10 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #
     # Parameters Area
     #
+    baseDirectoryCollapsibleButton = ctk.ctkCollapsibleButton()
+    baseDirectoryCollapsibleButton.text = "Choose base directory"
+    self.layout.addWidget(baseDirectoryCollapsibleButton)
+
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Load image"
     self.layout.addWidget(parametersCollapsibleButton)
@@ -110,11 +114,12 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     segmentEditorCollapsibleButton.text = "Segment Editor"
     self.layout.addWidget(segmentEditorCollapsibleButton)
 
+
     # Layout within the dummy collapsible button
+    baseDirectoryFormLayout = qt.QFormLayout(baseDirectoryCollapsibleButton)
     deepLearningFormLayout = qt.QFormLayout(deepLearningmodelCollapsibleButton)
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
     segmentEditorFormLayout = qt.QFormLayout(segmentEditorCollapsibleButton)
-
 
     self.segmentEditorWidget = slicer.qMRMLSegmentEditorWidget()
     self.segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
@@ -123,8 +128,8 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.clearButton = qt.QPushButton("Clear all")
     self.clearButton.toolTip = "Clear."
     self.clearButton.enabled = True
-    parametersFormLayout.addRow(self.clearButton)
-    
+    segmentEditorFormLayout.addRow(self.clearButton)
+
     self.moduleDir = os.path.dirname(slicer.modules.segmentations.path)
     self.saveDirectoryFilePathSelector = ctk.ctkDirectoryButton()
     self.saveDirectoryFilePath = os.path.join(self.moduleDir, os.pardir)
@@ -147,9 +152,9 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     deepLearningFormLayout.addRow(self.predictButton)
 
     self.modelDirectoryFilePathSelector = ctk.ctkDirectoryButton()
-    self.modelDirectoryFilePath = os.path.join(self.moduleDir,os.pardir)
+    self.modelDirectoryFilePath = os.path.join(self.moduleDir, os.pardir)
     self.modelDirectoryFilePathSelector.directory  = self.modelDirectoryFilePath
-    parametersFormLayout.addRow(self.modelDirectoryFilePathSelector)
+    baseDirectoryFormLayout.addRow(self.modelDirectoryFilePathSelector)
 
     self.objectTypeSelector = qt.QComboBox()
     self.objectTypeSelector.addItems(["Select tooth type"])
@@ -188,7 +193,7 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     pass
 
   def onDirectorySelected(self):
-    self.modelDirectoryFilePath = self.modelDirectoryFilePathSelector.directory
+    self.modelDirectoryFilePath = self.modelDirectoryFilePathSelector.directory + '/image'
     currentItems = self.objectTypeSelector.count
     for i in range(currentItems,-1,-1):
       self.objectTypeSelector.removeItem(i)
@@ -239,7 +244,7 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onLoadButton(self):
     #self.objectTypeSelector.currentText,
-    path=(os.path.join(self.modelDirectoryFilePathSelector.directory,self.objectTypeSelector.currentText,self.objectSelector.currentText)).replace('image','mask')
+    path=(os.path.join(self.modelDirectoryFilePath,self.objectTypeSelector.currentText,self.objectSelector.currentText)).replace('image','mask')
     labelmapVolumeNode =slicer.util.loadLabelVolume(path)
     masterVolumeNode = self.image
 
@@ -256,8 +261,11 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.segmentEditorWidget.setMasterVolumeNode(masterVolumeNode)
 
   def onPredictButton(self):
-    path= os.path.join(self.modelDirectoryFilePathSelector.directory, 'model/')
-    model1 ='iteration5.h5'
+    path= (self.modelDirectoryFilePath).replace('image','model')
+    print(path)
+    for model in os.listdir(path):
+      print(model)
+      model1 = model
     self.loadKerasModel(os.path.join(path,model1))
 
   def onClearButton(self):
@@ -266,7 +274,7 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     slicer.mrmlScene.RemoveNode(self.segmentationNode)
 
   def onApplyButton(self):
-    path = os.path.join(self.modelDirectoryFilePathSelector.directory, self.objectTypeSelector.currentText,self.objectSelector.currentText)
+    path = os.path.join(self.modelDirectoryFilePath, self.objectTypeSelector.currentText,self.objectSelector.currentText)
     self.image = slicer.util.loadVolume(path)
 
 
@@ -289,7 +297,7 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     x[x > 4000] = 4000
     x=((x + 1000) / 5000)
     input_array = exposure.equalize_hist(x)
-    print(input_array.shape)
+
     resize_image =  resize(input_array, (40, 40, 40), anti_aliasing=True)
     img_np = np.rollaxis(np.array(np.array([np.array([np.array(resize_image)])])), 0, 5)
 
