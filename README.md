@@ -14,6 +14,9 @@
   * pip_install('tensorflow')
   * pip_install('tensorflow-ops')
   * pip_install('scikit-image')
+* Create a folder structure with folder names - images, mask and model
+* Image and mask folder contains the types of teeth to be segmented
+* Model folder contains trained model, example - 'model.h5'
 
 ### Contribution guidelines ###
 
