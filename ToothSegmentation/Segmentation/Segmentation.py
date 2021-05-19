@@ -1,16 +1,14 @@
-import os
-
 import ctk
 import numpy as np
 import qt
 import slicer
+import os
 import tensorflow as tf
-import vtk as vtk
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from skimage.transform import  resize
 from skimage import exposure
-
+from Resources.config import *
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.losses import Loss
 from tensorflow.python.ops import gen_math_ops
@@ -74,9 +72,6 @@ def registerSampleData():
 #
 
 class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
-  """Uses ScriptedLoadableModuleWidget base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
 
   def __init__(self, parent=None):
     """
@@ -227,26 +222,24 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onSaveButton(self):
-    print("Save")
+
     outputPath=self.saveDirectoryFilePathSelector.directory
     labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode')
+
     segmentationNode = self.segmentEditorWidget.segmentationNode()
-    labelmapVolumeNode.SetOrigin(self.image.GetOrigin())
-    labelmapVolumeNode.SetSpacing(self.image.GetSpacing())
+    labelmapVolumeNode.SetOrigin(self.masterVolumeNode.GetOrigin())
+    labelmapVolumeNode.SetSpacing(self.masterVolumeNode.GetSpacing())
+
     slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentationNode, labelmapVolumeNode)
     filepath = os.path.join(self.saveDirectoryFilePathSelector.directory,self.objectTypeSelector.currentText)
     slicer.util.saveNode(labelmapVolumeNode, filepath)
-  #  modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode')
-    filepath2 = (self.saveDirectoryFilePathSelector.directory)
-
-    slicer.modules.segmentations.logic().ExportSegmentsClosedSurfaceRepresentationToFiles(filepath2,segmentationNode,"STL")
-  #  slicer.util.saveNode(modelNode, filepath2)
+    slicer.modules.segmentations.logic().ExportSegmentsClosedSurfaceRepresentationToFiles(self.saveDirectoryFilePathSelector.directory,segmentationNode,"STL")
 
   def onLoadButton(self):
-    #self.objectTypeSelector.currentText,
+
     path=(os.path.join(self.modelDirectoryFilePath,self.objectTypeSelector.currentText,self.objectSelector.currentText)).replace('image','mask')
-    labelmapVolumeNode =slicer.util.loadLabelVolume(path)
-    masterVolumeNode = self.image
+    labelmapVolumeNode = slicer.util.loadLabelVolume(path)
+    masterVolumeNode = self.masterVolumeNode
 
     segmentationNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSegmentationNode')
     segmentEditorNode = slicer.vtkMRMLSegmentEditorNode()
@@ -261,72 +254,54 @@ class SegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.segmentEditorWidget.setMasterVolumeNode(masterVolumeNode)
 
   def onPredictButton(self):
-    path= (self.modelDirectoryFilePath).replace('image','model')
-    print(path)
+    path = (self.modelDirectoryFilePath).replace('image','model')
     for model in os.listdir(path):
-      print(model)
-      model1 = model
-    self.loadKerasModel(os.path.join(path,model1))
+      self.loadKerasModel(os.path.join(path,model))
 
   def onClearButton(self):
-    slicer.mrmlScene.RemoveNode(self.image)
+    slicer.mrmlScene.RemoveNode(self.masterVolumeNode)
     slicer.mrmlScene.RemoveNode(self.labelmapVolumeNode)
     slicer.mrmlScene.RemoveNode(self.segmentationNode)
 
   def onApplyButton(self):
     path = os.path.join(self.modelDirectoryFilePath, self.objectTypeSelector.currentText,self.objectSelector.currentText)
-    self.image = slicer.util.loadVolume(path)
+    self.masterVolumeNode = slicer.util.loadVolume(path)
 
 
   def loadKerasModel(self, modelFilePath):
-    """
-    Tries to load Keras model for classifiation
-    :param modelFilePath: full path to saved model file
-    :return: True on success, False on error
-    """
+
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
-    #Load model
     self.model = tf.keras.models.load_model(modelFilePath,custom_objects={'Dice': Dice})
-    #pre-processing
 
-    x = np.swapaxes((slicer.util.arrayFromVolume(self.image)),0,2)
-    #x=np.array([x[2],x[1],x[0]])
-    print(np.min(x),' ',np.max(x))
-    x[x < -1000] = -1000
-    x[x > 4000] = 4000
-    x=((x + 1000) / 5000)
-    input_array = exposure.equalize_hist(x)
+    input = np.swapaxes((slicer.util.arrayFromVolume(self.masterVolumeNode)),0,2)
+    resize_input = SegmentationLogic.process(self,input)
 
-    resize_image =  resize(input_array, (40, 40, 40), anti_aliasing=True)
-    img_np = np.rollaxis(np.array(np.array([np.array([np.array(resize_image)])])), 0, 5)
-
-    #predict
-    pred1 = ((self.model.predict(img_np)).astype(float))
-    new_pred = np.swapaxes(np.round(resize(pred1[0][:, :, :, 0], input_array.shape, anti_aliasing=True)),0,2)
+    prediction_output = (self.model.predict(resize_input)).astype(float)[0][:, :, :, 0]
+    swapaxes_output = np.swapaxes(np.round(resize(prediction_output, input.shape, anti_aliasing=True)),0,2)
 
     self.labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode')
     volumeNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLScalarVolumeNode')
     volumeNode.CreateDefaultDisplayNodes()
-    slicer.util.updateVolumeFromArray(volumeNode, new_pred)
-    volumeNode.SetOrigin(self.image.GetOrigin())
-    volumeNode.SetSpacing(self.image.GetSpacing())
-    slicer.vtkSlicerVolumesLogic().CreateLabelVolumeFromVolume(slicer.mrmlScene, self.labelmapVolumeNode, volumeNode)
 
-    masterVolumeNode = self.image
+    slicer.util.updateVolumeFromArray(volumeNode, swapaxes_output)
+
+    volumeNode.SetOrigin(self.masterVolumeNode.GetOrigin())
+    volumeNode.SetSpacing(self.masterVolumeNode.GetSpacing())
+
+    slicer.vtkSlicerVolumesLogic().CreateLabelVolumeFromVolume(slicer.mrmlScene, self.labelmapVolumeNode, volumeNode)
     slicer.app.processEvents()
 
     self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSegmentationNode')
     segmentEditorNode = slicer.vtkMRMLSegmentEditorNode()
 
-    slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(self.labelmapVolumeNode,
-                                                                          self.segmentationNode)
+    slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(self.labelmapVolumeNode,self.segmentationNode)
     slicer.mrmlScene.AddNode(segmentEditorNode)
-    #self.segmentationNode.CreateDefaultDisplayNodes()  # only needed for display
-    self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(masterVolumeNode)
+
+    self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(self.masterVolumeNode)
     self.segmentEditorWidget.setMRMLSegmentEditorNode(segmentEditorNode)
     self.segmentEditorWidget.setSegmentationNode(self.segmentationNode)
-    self.segmentEditorWidget.setMasterVolumeNode(masterVolumeNode)
+    self.segmentEditorWidget.setMasterVolumeNode(self.masterVolumeNode)
     self.segmentationNode.CreateClosedSurfaceRepresentation()
 
 class SegmentationLogic(ScriptedLoadableModuleLogic):
@@ -350,17 +325,20 @@ class SegmentationLogic(ScriptedLoadableModuleLogic):
     Initialize parameter node with default settings.
     """
 
-  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
+  def process(self, inputVolume):
     """
     Run the processing algorithm.
     Can be used without GUI widget.
     :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
     """
-
+    x = inputVolume
+    x[x < HOUNSFIELD_MIN] = HOUNSFIELD_MIN
+    x[x > HOUNSFIELD_MAX] = HOUNSFIELD_MAX
+    x = ((x - HOUNSFIELD_MIN) / HOUNSFIELD_RANGE)
+    input_array = exposure.equalize_hist(x)
+    img_resize = resize(input_array, (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_DEPTH), anti_aliasing=True)
+    img_add_channel = np.expand_dims(np.array([img_resize]), axis=4)
+    return img_add_channel
 
 # SegTest
 #
